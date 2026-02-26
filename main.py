@@ -40,6 +40,10 @@ async def handle_message(request: Request):
             texto_limpio = respuesta_ai
             for link in image_links:
                 texto_limpio = texto_limpio.replace(link, "").strip()
+            
+            # Normalizar saltos de línea excesivos (máximo 2 seguidos para párrafos limpios)
+            texto_limpio = re.sub(r'\n{3,}', '\n\n', texto_limpio)
+            texto_limpio = texto_limpio.strip()
 
             # 1. Enviar el texto LIMPIO (sin las URLs feas de los archivos)
             # Si el texto queda vacío (solo había links), enviamos un mensaje predeterminado o nada
