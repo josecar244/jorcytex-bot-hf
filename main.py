@@ -41,11 +41,12 @@ async def handle_message(request: Request):
             for link in image_links:
                 texto_limpio = texto_limpio.replace(link, "").strip()
 
-            # 1. Enviar el texto (si queda algo después de quitar links o si prefieres enviarlo con links)
-            # En este caso enviamos el texto original para que haya contexto y luego las imágenes
-            enviar_a_whatsapp(wa_id, respuesta_ai)
+            # 1. Enviar el texto LIMPIO (sin las URLs feas de los archivos)
+            # Si el texto queda vacío (solo había links), enviamos un mensaje predeterminado o nada
+            if texto_limpio.strip():
+                enviar_a_whatsapp(wa_id, texto_limpio)
             
-            # 2. Enviar cada imagen detectada como objeto multimedia
+            # 2. Enviar cada imagen detectada como objeto multimedia real
             for link in image_links:
                 enviar_imagen_a_whatsapp(wa_id, link)
             
