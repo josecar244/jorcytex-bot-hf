@@ -11,9 +11,13 @@ app = FastAPI()
 agente = AgenteJorcytex()
 
 # Configuración de Evolution API
-EVOLUTION_URL = os.getenv("EVOLUTION_URL") # https://evolution-api-latest-6j29.onrender.com
+EVOLUTION_URL = (os.getenv("EVOLUTION_URL") or "").rstrip("/") 
 EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY") 
-EVOLUTION_INSTANCE = os.getenv("EVOLUTION_INSTANCE") # El nombre que le pusiste (ej: jorcytex_v1)
+EVOLUTION_INSTANCE = os.getenv("EVOLUTION_INSTANCE") 
+
+@app.get("/")
+async def root():
+    return {"status": "online", "message": "Servidor IA de JORCYTEX operando"}
 
 @app.get("/webhook")
 async def verify_webhook(request: Request):
