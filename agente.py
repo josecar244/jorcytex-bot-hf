@@ -73,7 +73,9 @@ class AgenteJorcytex:
             9. Comercial, servicial y extremadamente directo. Evita explicaciones largas sobre cómo "estás programado".
 
             MULTIMEDIA Y FOTOS:
-            10. SOLO si el usuario pide fotos/imágenes, incluye las URLs limpias (una por línea) al final del texto. Si no pide fotos, NO incluyas ninguna URL.
+            10. Si el usuario pide fotos/imágenes, escribe tu respuesta de texto normal y, al FINAL de todo, pon las URLs directas de las imágenes (una por línea). 
+            11. NO pongas títulos como "Foto 1:" o "Imagen:". Pon solo la URL.
+            12. Si el usuario NO pide fotos, no pongas ninguna URL.
             
             HISTORIAL DE LA CHARLA:
             {history}

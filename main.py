@@ -27,9 +27,13 @@ async def handle_message(request: Request):
         payload = await request.json()
         evento = payload.get("event")
         
-        # 1. Filtro básico de eventos de mensaje
+        # 1. Filtro silencioso de eventos técnicos
+        EVENTOS_RUIDO = ["contacts.update", "chats.update", "messages.update", "send.message", "presence.update", "chats.upsert", "chats.delete"]
+        if str(evento).lower() in EVENTOS_RUIDO:
+            return {"status": "technical_event_ignored"}
+
         if str(evento).lower() not in ["messages.upsert", "messages_upsert"]:
-            print(f"ℹ️ Evento ignorado: {evento}")
+            print(f"ℹ️ Evento desconocido: {evento}")
             return {"status": "event_ignored"}
 
         # 2. Extracción segura de la data (Evolution v2 puede mandar objeto o lista)
@@ -77,15 +81,26 @@ async def handle_message(request: Request):
         # Buscamos cualquier link que termine en imagen
         image_links = re.findall(r'(https?://\S+\.(?:jpg|jpeg|png))', respuesta_ai)
         
-        # Limpiar el texto: quitamos las URLs para que el mensaje se vea limpio
-        texto_para_enviar = respuesta_ai
+        # Limpiar el texto: quitamos las URLs y líneas que queden vacías o solo con nombres de fotos
+        texto_limpio = respuesta_ai
         for link in image_links:
-            texto_para_enviar = texto_para_enviar.replace(link, "")
+            texto_limpio = texto_limpio.replace(link, "")
         
-        # Enviamos el texto (si quedó algo después de limpiar)
-        texto_para_enviar = texto_para_enviar.strip()
-        if texto_para_enviar:
-            enviar_a_evolution(wa_id, texto_para_enviar)
+        # 🧹 LIMPIEZA AGRESIVA: Quitar líneas que terminan en ":" y nada más (sobras de etiquetas de fotos)
+        lineas = texto_limpio.split("\n")
+        lineas_finales = []
+        for l in lineas:
+            # Si la línea termina en : o *:* y está casi vacía, la quitamos
+            l_strip = l.strip()
+            if l_strip.endswith(":") or l_strip.endswith(":*"):
+                if len(l_strip) < 30: continue 
+            if l_strip:
+                lineas_finales.append(l)
+        
+        texto_final = "\n".join(lineas_finales).strip()
+        
+        if texto_final:
+            enviar_a_evolution(wa_id, texto_final)
         
         # Enviamos las fotos por separado
         for link in image_links:
@@ -119,13 +134,12 @@ def enviar_imagen_a_evolution(para, url_imagen, pie_de_foto=""):
     url = f"{EVOLUTION_URL}/message/sendMedia/{EVOLUTION_INSTANCE}"
     headers = {"apikey": EVOLUTION_API_KEY, "Content-Type": "application/json"}
     
+    # 🕵️ ESTRATEGIA v2.3.6: Payload plano sin wrappers anidados
     payload = {
         "number": para,
-        "mediaMessage": {
-            "mediatype": "image",
-            "caption": pie_de_foto,
-            "media": url_imagen
-        }
+        "media": url_imagen,
+        "mediatype": "image",
+        "caption": pie_de_foto
     }
     
     try:
