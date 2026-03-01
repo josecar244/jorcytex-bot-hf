@@ -73,7 +73,7 @@ class AgenteJorcytex:
             9. Comercial, servicial y extremadamente directo. Evita explicaciones largas sobre cómo "estás programado".
 
             MULTIMEDIA Y FOTOS:
-            10. SOLO si el usuario solicita explícitamente "fotos", "imágenes", "ver el producto" o algo similar, incluye los enlaces (URLs) correspondientes al final de tu respuesta. Si el usuario hace preguntas generales de precios o tallas SIN pedir fotos, NO incluyas los enlaces. Nunca uses palabras como "URL" o "link", simplemente pega el enlace al final si fue solicitado.
+            10. SOLO si el usuario pide fotos/imágenes, incluye las URLs limpias (una por línea) al final del texto. Si no pide fotos, NO incluyas ninguna URL.
             
             HISTORIAL DE LA CHARLA:
             {history}

@@ -18,46 +18,73 @@ EVOLUTION_INSTANCE = os.getenv("EVOLUTION_INSTANCE")
 async def root():
     return {"status": "online", "message": "Servidor JORCYTEX (Evolution v2) operando"}
 
+# Cache temporal para evitar duplicados
+PROCESED_IDS = set()
+
 @app.post("/webhook")
 async def handle_message(request: Request):
     try:
         data = await request.json()
         evento = data.get("event")
         
-        # Super Debug: Imprimimos todo lo que sea un mensaje antes de cualquier filtro
+        # 🆔 ID único del mensaje original de WhatsApp
+        msg_id = data.get("data", {}).get("key", {}).get("id")
+        
+        # 1. Filtro de duplicados
+        if msg_id and msg_id in PROCESED_IDS:
+            return {"status": "ignored_duplicate"}
+        
+        # 2. Solo procesar mensajes
         if str(evento).lower() in ["messages.upsert", "messages_upsert"]:
+            if msg_id:
+                PROCESED_IDS.add(msg_id)
+                if len(PROCESED_IDS) > 200: PROCESED_IDS.pop()
+
             msg_data = data.get("data", {})
             wa_id = msg_data.get("key", {}).get("remoteJid", "SIND-ID")
             from_me = msg_data.get("key", {}).get("fromMe", False)
             
-            # Intentar extraer texto
-            texto = ""
+            # Extraer texto del mensaje
+            texto_usuario = ""
             msg_content = msg_data.get("message", {})
             if "conversation" in msg_content:
-                texto = msg_content["conversation"]
+                texto_usuario = msg_content["conversation"]
             elif "extendedTextMessage" in msg_content:
-                texto = msg_content["extendedTextMessage"].get("text", "")
+                texto_usuario = msg_content["extendedTextMessage"].get("text", "")
             
-            print(f"🔍 [WEBHOOK] Evento: {evento} | ID: {wa_id} | FromMe: {from_me} | Texto: '{texto[:30]}...'")
-            
-            # Filtro de salida: Ignorar si es nuestro propio mensaje
+            print(f"🔍 [WEBHOOK] Mensaje de {wa_id}: '{texto_usuario[:30]}...'")
+
             if from_me:
                 return {"status": "ignored_self"}
 
-            # FILTRO RELAJADO: Permitimos @s.whatsapp.net y @lid
             if not wa_id.endswith("@s.whatsapp.net") and not wa_id.endswith("@lid"):
-                print(f"⚠️ Ignorando ID no compatible: {wa_id}")
                 return {"status": "ignored_incompatible_id"}
 
-            if not texto:
+            if not texto_usuario:
                 return {"status": "no_text"}
 
-            # Generar IA y responder
-            print(f"📩 Procesando mensaje de {wa_id}...")
-            respuesta = agente.responder(wa_id, texto)
+            # 3. Generar respuesta de la IA (RAG)
+            respuesta_ai = agente.responder(wa_id, texto_usuario)
             
-            # Enviar usando el JID completo (Evolution hará la conversión a número)
-            enviar_a_evolution(wa_id, respuesta)
+            # 📸 EXTRAER IMÁGENES
+            # Buscamos URLs que terminen en jpg, jpeg o png
+            image_links = re.findall(r'(https?://\S+\.(?:jpg|jpeg|png))', respuesta_ai)
+            
+            # Limpiar el texto de URLs para enviarlo solo como texto
+            texto_limpio = respuesta_ai
+            for link in image_links:
+                texto_limpio = texto_limpio.replace(link, "").strip()
+            
+            # Quitar saltos de línea excesivos al final
+            texto_limpio = re.sub(r'\n{3,}', '\n\n', texto_limpio).strip()
+
+            # 4. Enviar Texto Primero
+            if texto_limpio:
+                enviar_a_evolution(wa_id, texto_limpio)
+            
+            # 5. Enviar cada imagen como Media
+            for link in image_links:
+                enviar_imagen_a_evolution(wa_id, link)
             
         else:
             print(f"ℹ️ Evento ignorado: {evento}")
@@ -68,16 +95,9 @@ async def handle_message(request: Request):
     return {"status": "ok"}
 
 def enviar_a_evolution(para, texto):
-    # Endpoint estándar de Evolution v2
     url = f"{EVOLUTION_URL}/message/sendText/{EVOLUTION_INSTANCE}"
+    headers = {"apikey": EVOLUTION_API_KEY, "Content-Type": "application/json"}
     
-    headers = {
-        "apikey": EVOLUTION_API_KEY,
-        "Content-Type": "application/json"
-    }
-    
-    # Mandamos el JID completo (ej: 246037251891223@lid)
-    # Evolution v2.3.6 resuelve estos IDs internos automáticamente.
     payload = {
         "number": para, 
         "text": texto,
@@ -86,10 +106,32 @@ def enviar_a_evolution(para, texto):
     
     try:
         response = requests.post(url, json=payload, headers=headers)
-        print(f"📤 Respuesta enviada a {para}: {response.status_code}")
+        print(f"📤 Texto enviado a {para}: {response.status_code}")
         return response.json()
     except Exception as e:
-        print(f"❌ Error enviando a Evolution: {e}")
+        print(f"❌ Error enviando texto: {e}")
         return None
+
+def enviar_imagen_a_evolution(para, url_imagen, pie_de_foto=""):
+    url = f"{EVOLUTION_URL}/message/sendMedia/{EVOLUTION_INSTANCE}"
+    headers = {"apikey": EVOLUTION_API_KEY, "Content-Type": "application/json"}
+    
+    payload = {
+        "number": para,
+        "mediaMessage": {
+            "mediatype": "image",
+            "caption": pie_de_foto,
+            "media": url_imagen
+        }
+    }
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        print(f"🖼️ Imagen enviada a {para}: {response.status_code}")
+        return response.json()
+    except Exception as e:
+        print(f"❌ Error enviando imagen: {e}")
+        return None
+
 
 
