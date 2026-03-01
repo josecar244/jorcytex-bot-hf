@@ -25,37 +25,12 @@ async def verify_webhook(request: Request):
     return {"status": "ok"}
 
 @app.post("/webhook")
-@app.post("/webhook/{event_path:path}")
-async def handle_message(request: Request, event_path: str = ""):
+async def handle_message(request: Request):
     data = await request.json()
     
     try:
-        # Normalizar el evento: 'connection.update' o 'MESSAGES_UPSERT' -> 'MESSAGES_UPSERT'
-        raw_event = data.get("event", "")
-        event = raw_event.upper().replace(".", "_").replace("-", "_")
-        
-        # 1. Registro de estado de la conexión
-        if event == "CONNECTION_UPDATE":
-            state = data.get("data", {}).get("state")
-            status = data.get("data", {}).get("statusReason")
-            print(f"� Estado de WhatsApp: {state} (Código: {status})")
-            if state == "open":
-                print("✅ ¡BOT CONECTADO Y FUNCIONANDO!")
-            return {"status": "connection_updated"}
-
-        # 2. Capturar el QR
-        if event == "QRCODE_UPDATED":
-            qr_base64 = data.get("data", {}).get("qrcode", {}).get("base64")
-            if qr_base64:
-                print("\n" + "="*50)
-                print("📸 ¡CÓDIGO QR RECIBIDO!")
-                print("Copia el texto base64 que sigue y pégalo en: https://base64-to-image.com/")
-                print(qr_base64)
-                print("="*50 + "\n")
-            return {"status": "qr_received"}
-
-        # 2. Procesar mensajes
-        if event == "MESSAGES_UPSERT":
+        # Evolution API manda el evento "messages.upsert"
+        if data.get("event") == "messages.upsert":
             mensaje_data = data["data"]
             
             # Evitar responder a nuestros propios mensajes
@@ -66,11 +41,10 @@ async def handle_message(request: Request, event_path: str = ""):
             
             # Extraer el texto del usuario
             texto_usuario = ""
-            if mensaje_data.get("message"):
-                if "conversation" in mensaje_data["message"]:
-                    texto_usuario = mensaje_data["message"]["conversation"]
-                elif "extendedTextMessage" in mensaje_data["message"]:
-                    texto_usuario = mensaje_data["message"]["extendedTextMessage"]["text"]
+            if "conversation" in mensaje_data["message"]:
+                texto_usuario = mensaje_data["message"]["conversation"]
+            elif "extendedTextMessage" in mensaje_data["message"]:
+                texto_usuario = mensaje_data["message"]["extendedTextMessage"]["text"]
             
             if not texto_usuario:
                 return {"status": "no_text"}
