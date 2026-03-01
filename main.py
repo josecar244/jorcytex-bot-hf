@@ -1,12 +1,11 @@
 import os
 import requests
 import re
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from agente import AgenteJorcytex 
 from dotenv import load_dotenv
 
 load_dotenv()
-
 app = FastAPI()
 agente = AgenteJorcytex()
 
@@ -17,58 +16,50 @@ EVOLUTION_INSTANCE = os.getenv("EVOLUTION_INSTANCE")
 
 @app.get("/")
 async def root():
-    return {"status": "online", "message": "Servidor IA de JORCYTEX operando"}
-
-@app.get("/webhook")
-async def verify_webhook(request: Request):
-    # Ya no es necesario para Evolution, pero lo dejamos por compatibilidad
-    return {"status": "ok"}
+    return {"status": "online", "message": "Servidor JORCYTEX (Evolution v2) operando"}
 
 @app.post("/webhook")
 async def handle_message(request: Request):
     data = await request.json()
     
     try:
-        # Evolution API manda el evento "messages.upsert"
+        # 1. Filtro: Solo procesar eventos "messages.upsert" de Evolution
         if data.get("event") == "messages.upsert":
             mensaje_data = data["data"]
             
-            # Evitar responder a nuestros propios mensajes
-            if  mensaje_data.get("key", {}).get("fromMe"):
-                return {"status": "ignored"}
+            # 2. Ignorar si el mensaje es nuestro (enviado por el bot)
+            if mensaje_data.get("key", {}).get("fromMe"):
+                return {"status": "ignored_self_message"}
 
-            wa_id = mensaje_data["key"]["remoteJid"]
+            wa_id = mensaje_data["key"]["remoteJid"] # Ej: 51933376324@s.whatsapp.net
             
-            # Extraer el texto del usuario
+            # 🛡️ FILTRO ANTI-META / SISTEMA
+            # Los números de WhatsApp normales tienen entre 10 y 13 caracteres antes del @.
+            # Los IDs de Meta o WABA tienen 15 o más.
+            user_id = wa_id.split("@")[0]
+            if len(user_id) >= 15:
+                print(f"⚠️ Ignorando ID de sistema o Meta: {user_id}")
+                return {"status": "ignored_system_id"}
+
+            # 3. Extraer el texto del usuario
             texto_usuario = ""
-            if "conversation" in mensaje_data["message"]:
-                texto_usuario = mensaje_data["message"]["conversation"]
-            elif "extendedTextMessage" in mensaje_data["message"]:
-                texto_usuario = mensaje_data["message"]["extendedTextMessage"]["text"]
+            msg = mensaje_data.get("message", {})
+            
+            if "conversation" in msg:
+                texto_usuario = msg["conversation"]
+            elif "extendedTextMessage" in msg:
+                texto_usuario = msg["extendedTextMessage"].get("text", "")
             
             if not texto_usuario:
-                return {"status": "no_text"}
+                return {"status": "no_text_content"}
 
-            # Generar respuesta de la IA
+            print(f"📩 Mensaje de {user_id}: {texto_usuario[:50]}...")
+
+            # 4. Generar respuesta de la IA (RAG)
             respuesta_ai = agente.responder(wa_id, texto_usuario)
             
-            # Extraer links de imágenes de la respuesta
-            image_links = re.findall(r'(https?://\S+\.(?:jpg|jpeg|png))', respuesta_ai)
-            
-            # Limpiar el texto
-            texto_limpio = respuesta_ai
-            for link in image_links:
-                texto_limpio = texto_limpio.replace(link, "").strip()
-            
-            texto_limpio = re.sub(r'\n{3,}', '\n\n', texto_limpio).strip()
-
-            # 1. Enviar el texto limpio
-            if texto_limpio:
-                enviar_a_evolution(wa_id, texto_limpio)
-            
-            # 2. Enviar cada imagen
-            for link in image_links:
-                enviar_imagen_a_evolution(wa_id, link)
+            # 5. Enviar a través de Evolution API
+            enviar_a_evolution(wa_id, respuesta_ai)
             
     except Exception as e:
         print(f"❌ Error procesando webhook: {e}")
@@ -76,6 +67,7 @@ async def handle_message(request: Request):
     return {"status": "ok"}
 
 def enviar_a_evolution(para, texto):
+    # Endpoint estándar de Evolution v2
     url = f"{EVOLUTION_URL}/message/sendText/{EVOLUTION_INSTANCE}"
     
     headers = {
@@ -83,46 +75,22 @@ def enviar_a_evolution(para, texto):
         "Content-Type": "application/json"
     }
     
-    # Limpiar el número para Evolution API (quitar @s.whatsapp.net si existe)
-    numero_limpio = para.split("@")[0]
+    # Extraemos el número limpio por si acaso, pero mandamos el JID completo
+    # si Evolution lo permite, o solo el número según la versión.
+    # Para v2.3.6, mandar solo el número (sin @s.whatsapp.net) es lo más seguro.
+    numero_limpio = re.sub(r'\D', '', para.split("@")[0])
     
     payload = {
         "number": numero_limpio,
         "text": texto,
-        "delay": 1200 
+        "delay": 1000 
     }
     
     try:
         response = requests.post(url, json=payload, headers=headers)
-        print(f"📤 Status Text: {response.status_code} - Response: {response.text}")
+        print(f"� Envío a {numero_limpio}: {response.status_code}")
         return response.json()
     except Exception as e:
         print(f"❌ Error enviando a Evolution: {e}")
         return None
 
-def enviar_imagen_a_evolution(para, url_imagen, pie_de_foto=""):
-    url = f"{EVOLUTION_URL}/message/sendMedia/{EVOLUTION_INSTANCE}"
-    
-    headers = {
-        "apikey": EVOLUTION_API_KEY,
-        "Content-Type": "application/json"
-    }
-    
-    numero_limpio = para.split("@")[0]
-    
-    payload = {
-        "number": numero_limpio,
-        "mediaMessage": {
-            "mediatype": "image",
-            "caption": pie_de_foto,
-            "media": url_imagen
-        }
-    }
-    
-    try:
-        response = requests.post(url, json=payload, headers=headers)
-        print(f"🖼️ Status Image: {response.status_code} - Response: {response.text}")
-        return response.json()
-    except Exception as e:
-        print(f"❌ Error enviando imagen a Evolution: {e}")
-        return None
