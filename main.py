@@ -83,15 +83,22 @@ def enviar_a_evolution(para, texto):
         "Content-Type": "application/json"
     }
     
+    # Limpiar el número para Evolution API (quitar @s.whatsapp.net si existe)
+    numero_limpio = para.split("@")[0]
+    
     payload = {
-        "number": para,
+        "number": numero_limpio,
         "text": texto,
-        "delay": 1200 # Delay de 1.2 segundos para parecer humano
+        "delay": 1200 
     }
     
-    response = requests.post(url, json=payload, headers=headers)
-    print(f"📤 Status Text: {response.status_code}")
-    return response.json()
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        print(f"📤 Status Text: {response.status_code} - Response: {response.text}")
+        return response.json()
+    except Exception as e:
+        print(f"❌ Error enviando a Evolution: {e}")
+        return None
 
 def enviar_imagen_a_evolution(para, url_imagen, pie_de_foto=""):
     url = f"{EVOLUTION_URL}/message/sendMedia/{EVOLUTION_INSTANCE}"
@@ -101,8 +108,10 @@ def enviar_imagen_a_evolution(para, url_imagen, pie_de_foto=""):
         "Content-Type": "application/json"
     }
     
+    numero_limpio = para.split("@")[0]
+    
     payload = {
-        "number": para,
+        "number": numero_limpio,
         "mediaMessage": {
             "mediatype": "image",
             "caption": pie_de_foto,
@@ -110,6 +119,10 @@ def enviar_imagen_a_evolution(para, url_imagen, pie_de_foto=""):
         }
     }
     
-    response = requests.post(url, json=payload, headers=headers)
-    print(f"🖼️ Status Image: {response.status_code}")
-    return response.json()
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        print(f"🖼️ Status Image: {response.status_code} - Response: {response.text}")
+        return response.json()
+    except Exception as e:
+        print(f"❌ Error enviando imagen a Evolution: {e}")
+        return None
