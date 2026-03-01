@@ -24,75 +24,78 @@ PROCESED_IDS = set()
 @app.post("/webhook")
 async def handle_message(request: Request):
     try:
-        data = await request.json()
-        evento = data.get("event")
+        payload = await request.json()
+        evento = payload.get("event")
         
-        # 🆔 ID único del mensaje original de WhatsApp
-        msg_id = data.get("data", {}).get("key", {}).get("id")
-        
-        # 1. Filtro de duplicados
-        if msg_id and msg_id in PROCESED_IDS:
-            return {"status": "ignored_duplicate"}
-        
-        # 2. Solo procesar mensajes
-        if str(evento).lower() in ["messages.upsert", "messages_upsert"]:
-            if msg_id:
-                PROCESED_IDS.add(msg_id)
-                if len(PROCESED_IDS) > 200: PROCESED_IDS.pop()
-
-            msg_data = data.get("data", {})
-            wa_id = msg_data.get("key", {}).get("remoteJid", "SIND-ID")
-            from_me = msg_data.get("key", {}).get("fromMe", False)
-            
-            # Extraer texto del mensaje
-            texto_usuario = ""
-            msg_content = msg_data.get("message", {})
-            if "conversation" in msg_content:
-                texto_usuario = msg_content["conversation"]
-            elif "extendedTextMessage" in msg_content:
-                texto_usuario = msg_content["extendedTextMessage"].get("text", "")
-            
-            print(f"🔍 [WEBHOOK] Mensaje de {wa_id}: '{texto_usuario[:30]}...'")
-
-            if from_me:
-                return {"status": "ignored_self"}
-
-            if not wa_id.endswith("@s.whatsapp.net") and not wa_id.endswith("@lid"):
-                return {"status": "ignored_incompatible_id"}
-
-            if not texto_usuario:
-                return {"status": "no_text"}
-
-            # 3. Generar respuesta de la IA (RAG)
-            respuesta_ai = agente.responder(wa_id, texto_usuario)
-            
-            # 📸 EXTRAER IMÁGENES
-            # Buscamos URLs que terminen en jpg, jpeg o png
-            image_links = re.findall(r'(https?://\S+\.(?:jpg|jpeg|png))', respuesta_ai)
-            
-            # Limpiar el texto de URLs para enviarlo solo como texto
-            texto_limpio = respuesta_ai
-            for link in image_links:
-                texto_limpio = texto_limpio.replace(link, "").strip()
-            
-            # Quitar saltos de línea excesivos al final
-            texto_limpio = re.sub(r'\n{3,}', '\n\n', texto_limpio).strip()
-
-            # 4. Enviar Texto Primero
-            if texto_limpio:
-                enviar_a_evolution(wa_id, texto_limpio)
-            
-            # 5. Enviar cada imagen como Media
-            for link in image_links:
-                enviar_imagen_a_evolution(wa_id, link)
-            
-        else:
+        # 1. Filtro básico de eventos de mensaje
+        if str(evento).lower() not in ["messages.upsert", "messages_upsert"]:
             print(f"ℹ️ Evento ignorado: {evento}")
+            return {"status": "event_ignored"}
+
+        # 2. Extracción segura de la data (Evolution v2 puede mandar objeto o lista)
+        data_field = payload.get("data", {})
+        
+        # Si la data es una lista, tomamos el primer elemento (típico de Baileys/Evolution)
+        if isinstance(data_field, list):
+            if not data_field: return {"status": "empty_list"}
+            mensaje_obj = data_field[0]
+        else:
+            mensaje_obj = data_field
+
+        # 🆔 ID único para evitar duplicados
+        msg_id = mensaje_obj.get("key", {}).get("id")
+        if msg_id in PROCESED_IDS:
+            return {"status": "duplicate_ignored"}
+        
+        if msg_id:
+            PROCESED_IDS.add(msg_id)
+            if len(PROCESED_IDS) > 200: PROCESED_IDS.pop()
+
+        # 3. Datos del remitente y contenido
+        wa_id = mensaje_obj.get("key", {}).get("remoteJid", "SIN-ID")
+        from_me = mensaje_obj.get("key", {}).get("fromMe", False)
+        
+        if from_me: return {"status": "ignored_self"}
+        
+        # Extraer texto (soporte extendido)
+        texto_usuario = ""
+        msg_content = mensaje_obj.get("message", {})
+        if "conversation" in msg_content:
+            texto_usuario = msg_content["conversation"]
+        elif "extendedTextMessage" in msg_content:
+            texto_usuario = msg_content["extendedTextMessage"].get("text", "")
+        
+        if not texto_usuario:
+            return {"status": "no_text_content"}
+
+        print(f"🔍 [WEBHOOK] Mensaje de {wa_id}: '{texto_usuario[:30]}...'")
+
+        # 4. Generar respuesta RAG
+        respuesta_ai = agente.responder(wa_id, texto_usuario)
+        
+        # 📸 PROCESAR IMÁGENES
+        # Buscamos cualquier link que termine en imagen
+        image_links = re.findall(r'(https?://\S+\.(?:jpg|jpeg|png))', respuesta_ai)
+        
+        # Limpiar el texto: quitamos las URLs para que el mensaje se vea limpio
+        texto_para_enviar = respuesta_ai
+        for link in image_links:
+            texto_para_enviar = texto_para_enviar.replace(link, "")
+        
+        # Enviamos el texto (si quedó algo después de limpiar)
+        texto_para_enviar = texto_para_enviar.strip()
+        if texto_para_enviar:
+            enviar_a_evolution(wa_id, texto_para_enviar)
+        
+        # Enviamos las fotos por separado
+        for link in image_links:
+            enviar_imagen_a_evolution(wa_id, link)
             
     except Exception as e:
         print(f"❌ Error en webhook: {e}")
         
     return {"status": "ok"}
+
 
 def enviar_a_evolution(para, texto):
     url = f"{EVOLUTION_URL}/message/sendText/{EVOLUTION_INSTANCE}"
