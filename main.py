@@ -29,7 +29,18 @@ async def handle_message(request: Request):
     data = await request.json()
     
     try:
-        # Evolution API manda el evento "messages.upsert"
+        # 1. Capturar el QR si llega por webhook (Súper útil si el Manager falla)
+        if data.get("event") == "qrcode.updated":
+            qr_base64 = data.get("data", {}).get("qrcode", {}).get("base64")
+            if qr_base64:
+                print("\n" + "="*50)
+                print("📸 ¡CÓDIGO QR RECIBIDO!")
+                print("Copia el texto base64 que sigue y pégalo en: https://base64-to-image.com/")
+                print(qr_base64)
+                print("="*50 + "\n")
+            return {"status": "qr_received"}
+
+        # 2. Procesar mensajes normales
         if data.get("event") == "messages.upsert":
             mensaje_data = data["data"]
             
@@ -41,10 +52,11 @@ async def handle_message(request: Request):
             
             # Extraer el texto del usuario
             texto_usuario = ""
-            if "conversation" in mensaje_data["message"]:
-                texto_usuario = mensaje_data["message"]["conversation"]
-            elif "extendedTextMessage" in mensaje_data["message"]:
-                texto_usuario = mensaje_data["message"]["extendedTextMessage"]["text"]
+            if mensaje_data.get("message"):
+                if "conversation" in mensaje_data["message"]:
+                    texto_usuario = mensaje_data["message"]["conversation"]
+                elif "extendedTextMessage" in mensaje_data["message"]:
+                    texto_usuario = mensaje_data["message"]["extendedTextMessage"]["text"]
             
             if not texto_usuario:
                 return {"status": "no_text"}
