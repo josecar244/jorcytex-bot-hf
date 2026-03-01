@@ -39,6 +39,7 @@ class AgenteJorcytex:
         """
         query_embedding = self.embeddings_model.embed_query(pregunta)
         
+        # Al no especificar .schema(), usa 'public' por defecto
         rpc_res = self.supabase.rpc("match_documents", {
             "query_embedding": query_embedding,
             "match_threshold": 0.5,
@@ -47,6 +48,7 @@ class AgenteJorcytex:
         
         contexto = "\n".join([item['content'] for item in rpc_res.data])
         return contexto if contexto else "No hay información específica disponible."
+
 
     def _crear_cadena_lcel(self):
         system_template = """
