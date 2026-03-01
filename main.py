@@ -34,10 +34,16 @@ async def handle_message(request: Request, event_path: str = ""):
         raw_event = data.get("event", "")
         event = raw_event.upper().replace(".", "_").replace("-", "_")
         
-        if event:
-            print(f"🔔 Evento detectado: {event}")
-        
-        # 1. Capturar el QR
+        # 1. Registro de estado de la conexión
+        if event == "CONNECTION_UPDATE":
+            state = data.get("data", {}).get("state")
+            status = data.get("data", {}).get("statusReason")
+            print(f"� Estado de WhatsApp: {state} (Código: {status})")
+            if state == "open":
+                print("✅ ¡BOT CONECTADO Y FUNCIONANDO!")
+            return {"status": "connection_updated"}
+
+        # 2. Capturar el QR
         if event == "QRCODE_UPDATED":
             qr_base64 = data.get("data", {}).get("qrcode", {}).get("base64")
             if qr_base64:
