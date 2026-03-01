@@ -38,24 +38,25 @@ async def handle_message(request: Request):
             elif "extendedTextMessage" in msg_content:
                 texto = msg_content["extendedTextMessage"].get("text", "")
             
-            print(f"🔍 [SUPER-DEBUG] Evento: {evento} | ID: {wa_id} | FromMe: {from_me} | Texto: '{texto}'")
+            print(f"🔍 [WEBHOOK] Evento: {evento} | ID: {wa_id} | FromMe: {from_me} | Texto: '{texto[:30]}...'")
             
             # Filtro de salida: Ignorar si es nuestro propio mensaje
             if from_me:
                 return {"status": "ignored_self"}
 
-            # Filtro de IDs de sistema (Meta IDs largos)
-            user_id = wa_id.split("@")[0]
-            if len(user_id) >= 15:
-                print(f"⚠️ Ignorando ID de sistema: {user_id}")
-                return {"status": "ignored_system_id"}
+            # FILTRO RELAJADO: Permitimos @s.whatsapp.net y @lid
+            if not wa_id.endswith("@s.whatsapp.net") and not wa_id.endswith("@lid"):
+                print(f"⚠️ Ignorando ID no compatible: {wa_id}")
+                return {"status": "ignored_incompatible_id"}
 
             if not texto:
                 return {"status": "no_text"}
 
             # Generar IA y responder
-            print(f"📩 Procesando mensaje de {user_id}...")
+            print(f"📩 Procesando mensaje de {wa_id}...")
             respuesta = agente.responder(wa_id, texto)
+            
+            # Enviar usando el JID completo (Evolution hará la conversión a número)
             enviar_a_evolution(wa_id, respuesta)
             
         else:
@@ -66,8 +67,6 @@ async def handle_message(request: Request):
         
     return {"status": "ok"}
 
-
-
 def enviar_a_evolution(para, texto):
     # Endpoint estándar de Evolution v2
     url = f"{EVOLUTION_URL}/message/sendText/{EVOLUTION_INSTANCE}"
@@ -77,22 +76,20 @@ def enviar_a_evolution(para, texto):
         "Content-Type": "application/json"
     }
     
-    # Extraemos el número limpio por si acaso, pero mandamos el JID completo
-    # si Evolution lo permite, o solo el número según la versión.
-    # Para v2.3.6, mandar solo el número (sin @s.whatsapp.net) es lo más seguro.
-    numero_limpio = re.sub(r'\D', '', para.split("@")[0])
-    
+    # Mandamos el JID completo (ej: 246037251891223@lid)
+    # Evolution v2.3.6 resuelve estos IDs internos automáticamente.
     payload = {
-        "number": numero_limpio,
+        "number": para, 
         "text": texto,
         "delay": 1000 
     }
     
     try:
         response = requests.post(url, json=payload, headers=headers)
-        print(f"� Envío a {numero_limpio}: {response.status_code}")
+        print(f"📤 Respuesta enviada a {para}: {response.status_code}")
         return response.json()
     except Exception as e:
         print(f"❌ Error enviando a Evolution: {e}")
         return None
+
 
