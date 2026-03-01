@@ -10,92 +10,102 @@ load_dotenv()
 app = FastAPI()
 agente = AgenteJorcytex()
 
-WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
-PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
-VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
+# Configuración de Evolution API
+EVOLUTION_URL = os.getenv("EVOLUTION_URL") # https://evolution-api-latest-6j29.onrender.com
+EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY") 
+EVOLUTION_INSTANCE = os.getenv("EVOLUTION_INSTANCE") # El nombre que le pusiste (ej: jorcytex_v1)
 
 @app.get("/webhook")
 async def verify_webhook(request: Request):
-    params = request.query_params
-    if params.get("hub.verify_token") == VERIFY_TOKEN:
-        return Response(content=params.get("hub.challenge"))
-    return Response(content="Error de token", status_code=403)
-    
+    # Ya no es necesario para Evolution, pero lo dejamos por compatibilidad
+    return {"status": "ok"}
+
 @app.post("/webhook")
 async def handle_message(request: Request):
     data = await request.json()
     
     try:
-        if "messages" in data["entry"][0]["changes"][0]["value"]:
-            mensaje_data = data["entry"][0]["changes"][0]["value"]["messages"][0]
-            wa_id = mensaje_data["from"]
-            texto_usuario = mensaje_data["text"]["body"]
+        # Evolution API manda el evento "messages.upsert"
+        if data.get("event") == "messages.upsert":
+            mensaje_data = data["data"]
             
+            # Evitar responder a nuestros propios mensajes
+            if  mensaje_data.get("key", {}).get("fromMe"):
+                return {"status": "ignored"}
+
+            wa_id = mensaje_data["key"]["remoteJid"]
+            
+            # Extraer el texto del usuario
+            texto_usuario = ""
+            if "conversation" in mensaje_data["message"]:
+                texto_usuario = mensaje_data["message"]["conversation"]
+            elif "extendedTextMessage" in mensaje_data["message"]:
+                texto_usuario = mensaje_data["message"]["extendedTextMessage"]["text"]
+            
+            if not texto_usuario:
+                return {"status": "no_text"}
+
+            # Generar respuesta de la IA
             respuesta_ai = agente.responder(wa_id, texto_usuario)
             
-            # Extraer links de imágenes (jpg, jpeg, png) de la respuesta
+            # Extraer links de imágenes de la respuesta
             image_links = re.findall(r'(https?://\S+\.(?:jpg|jpeg|png))', respuesta_ai)
             
-            # Limpiar el texto de la respuesta quitando los links para enviarlos aparte como multimedia
+            # Limpiar el texto
             texto_limpio = respuesta_ai
             for link in image_links:
                 texto_limpio = texto_limpio.replace(link, "").strip()
             
-            # Normalizar saltos de línea excesivos (máximo 2 seguidos para párrafos limpios)
-            texto_limpio = re.sub(r'\n{3,}', '\n\n', texto_limpio)
-            texto_limpio = texto_limpio.strip()
+            texto_limpio = re.sub(r'\n{3,}', '\n\n', texto_limpio).strip()
 
-            # 1. Enviar el texto LIMPIO (sin las URLs feas de los archivos)
-            # Si el texto queda vacío (solo había links), enviamos un mensaje predeterminado o nada
-            if texto_limpio.strip():
-                enviar_a_whatsapp(wa_id, texto_limpio)
+            # 1. Enviar el texto limpio
+            if texto_limpio:
+                enviar_a_evolution(wa_id, texto_limpio)
             
-            # 2. Enviar cada imagen detectada como objeto multimedia real
+            # 2. Enviar cada imagen
             for link in image_links:
-                enviar_imagen_a_whatsapp(wa_id, link)
+                enviar_imagen_a_evolution(wa_id, link)
             
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Error procesando webhook: {e}")
         
     return {"status": "ok"}
 
-def enviar_a_whatsapp(para, texto):
-    url = f"https://graph.facebook.com/v22.0/{PHONE_NUMBER_ID}/messages"
+def enviar_a_evolution(para, texto):
+    url = f"{EVOLUTION_URL}/message/sendText/{EVOLUTION_INSTANCE}"
     
     headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "apikey": EVOLUTION_API_KEY,
         "Content-Type": "application/json"
     }
     
     payload = {
-        "messaging_product": "whatsapp",
-        "to": para,
-        "type": "text",
-        "text": {"body": texto}
+        "number": para,
+        "text": texto,
+        "delay": 1200 # Delay de 1.2 segundos para parecer humano
     }
     
     response = requests.post(url, json=payload, headers=headers)
     print(f"📤 Status Text: {response.status_code}")
     return response.json()
 
-def enviar_imagen_a_whatsapp(para, url_imagen, pie_de_foto=""):
-    url = f"https://graph.facebook.com/v22.0/{PHONE_NUMBER_ID}/messages"
+def enviar_imagen_a_evolution(para, url_imagen, pie_de_foto=""):
+    url = f"{EVOLUTION_URL}/message/sendMedia/{EVOLUTION_INSTANCE}"
+    
     headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "apikey": EVOLUTION_API_KEY,
         "Content-Type": "application/json"
     }
     
     payload = {
-        "messaging_product": "whatsapp",
-        "to": para,
-        "type": "image",
-        "image": {
-            "link": url_imagen,
-            "caption": pie_de_foto
+        "number": para,
+        "mediaMessage": {
+            "mediatype": "image",
+            "caption": pie_de_foto,
+            "media": url_imagen
         }
     }
     
     response = requests.post(url, json=payload, headers=headers)
     print(f"🖼️ Status Image: {response.status_code}")
     return response.json()
-
