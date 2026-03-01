@@ -14,7 +14,7 @@ EVOLUTION_URL = (os.getenv("EVOLUTION_URL") or "").rstrip("/")
 EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY") 
 EVOLUTION_INSTANCE = os.getenv("EVOLUTION_INSTANCE") 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def root():
     return {"status": "online", "message": "Servidor JORCYTEX (Evolution v2) operando"}
 
