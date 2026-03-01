@@ -25,12 +25,20 @@ async def verify_webhook(request: Request):
     return {"status": "ok"}
 
 @app.post("/webhook")
-async def handle_message(request: Request):
+@app.post("/webhook/{event_path:path}")
+async def handle_message(request: Request, event_path: str = ""):
     data = await request.json()
     
     try:
-        # 1. Capturar el QR si llega por webhook (Súper útil si el Manager falla)
-        if data.get("event") == "qrcode.updated":
+        # Normalizar el evento: 'connection.update' o 'MESSAGES_UPSERT' -> 'MESSAGES_UPSERT'
+        raw_event = data.get("event", "")
+        event = raw_event.upper().replace(".", "_").replace("-", "_")
+        
+        if event:
+            print(f"🔔 Evento detectado: {event}")
+        
+        # 1. Capturar el QR
+        if event == "QRCODE_UPDATED":
             qr_base64 = data.get("data", {}).get("qrcode", {}).get("base64")
             if qr_base64:
                 print("\n" + "="*50)
@@ -40,8 +48,8 @@ async def handle_message(request: Request):
                 print("="*50 + "\n")
             return {"status": "qr_received"}
 
-        # 2. Procesar mensajes normales
-        if data.get("event") == "messages.upsert":
+        # 2. Procesar mensajes
+        if event == "MESSAGES_UPSERT":
             mensaje_data = data["data"]
             
             # Evitar responder a nuestros propios mensajes
