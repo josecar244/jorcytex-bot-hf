@@ -20,22 +20,36 @@ async def root():
 
 @app.post("/webhook")
 async def handle_message(request: Request):
-    data = await request.json()
+    # 🕵️ STRATEGY: VERBOSE DEBUG LOGGING
+    # We will log everything that arrives to see if Evolution API is even talking to us.
+    try:
+        data = await request.json()
+        evento = data.get("event")
+        print(f"📡 EVENTO RECIBIDO: {evento}")
+        # print(f"🔍 DATOS COMPLETOS (DEBUG): {str(data)[:500]}...") # Be careful with privacy, but useful for debug
+    except Exception as e:
+        print(f"⚠️ Error parsing JSON: {e}")
+        return {"status": "error_js_parsing"}
     
     try:
-        # 1. Filtro: Solo procesar eventos "messages.upsert" de Evolution
-        if data.get("event") == "messages.upsert":
-            mensaje_data = data["data"]
+        # Evolution v2 can send 'messages.upsert' or 'MESSAGES_UPSERT' or 'messages_upsert'
+        # We normalize to lowercase for safety.
+        event_name = str(evento).lower()
+        
+        if event_name in ["messages.upsert", "messages_upsert"]:
+            mensaje_data = data.get("data")
+            if not mensaje_data:
+                print("⚠️ Event received but 'data' field is empty.")
+                return {"status": "empty_data"}
             
             # 2. Ignorar si el mensaje es nuestro (enviado por el bot)
             if mensaje_data.get("key", {}).get("fromMe"):
+                print("🏠 Mensaje propio ignorado (fromMe).")
                 return {"status": "ignored_self_message"}
 
             wa_id = mensaje_data["key"]["remoteJid"] # Ej: 51933376324@s.whatsapp.net
             
             # 🛡️ FILTRO ANTI-META / SISTEMA
-            # Los números de WhatsApp normales tienen entre 10 y 13 caracteres antes del @.
-            # Los IDs de Meta o WABA tienen 15 o más.
             user_id = wa_id.split("@")[0]
             if len(user_id) >= 15:
                 print(f"⚠️ Ignorando ID de sistema o Meta: {user_id}")
@@ -45,12 +59,14 @@ async def handle_message(request: Request):
             texto_usuario = ""
             msg = mensaje_data.get("message", {})
             
+            # En v2, el texto puede estar en varios lugares según el tipo de mensaje
             if "conversation" in msg:
                 texto_usuario = msg["conversation"]
             elif "extendedTextMessage" in msg:
                 texto_usuario = msg["extendedTextMessage"].get("text", "")
             
             if not texto_usuario:
+                print(f"🧩 Mensaje de {user_id} recibido pero no contiene texto (ej: sticker, audio).")
                 return {"status": "no_text_content"}
 
             print(f"📩 Mensaje de {user_id}: {texto_usuario[:50]}...")
@@ -59,12 +75,17 @@ async def handle_message(request: Request):
             respuesta_ai = agente.responder(wa_id, texto_usuario)
             
             # 5. Enviar a través de Evolution API
+            print(f"🤖 IA Responde: {respuesta_ai[:50]}...")
             enviar_a_evolution(wa_id, respuesta_ai)
+            
+        else:
+            print(f"ℹ️ Evento ignorado (no es messages.upsert): {evento}")
             
     except Exception as e:
         print(f"❌ Error procesando webhook: {e}")
         
     return {"status": "ok"}
+
 
 def enviar_a_evolution(para, texto):
     # Endpoint estándar de Evolution v2
