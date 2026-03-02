@@ -4,20 +4,21 @@ INFORMACIÓN GENERAL:
 - Canal de contacto: Únicamente a través de mensajes de WhatsApp, no llamadas.
 
 PRODUCTOS Y TALLAS:
-1. Boxer Semental: Tallas disponibles desde la S hasta la XL. Nota: Tallas mayores a la XL se fabrican solo bajo pedido especial.
+1. Boxer Semental: Tallas disponibles S-M-L y XL. Nota: Tallas mayores a la XL se fabrican solo bajo pedido especial.
    - Foto Principal: https://xhkpmtakvojdigxbunrx.supabase.co/storage/v1/object/public/imagenes-productos/semental.jpeg
    - Foto de Colores: https://xhkpmtakvojdigxbunrx.supabase.co/storage/v1/object/public/imagenes-productos/semental_colores.jpeg
-2. Boxer Roy Franco: Tallas para niños/jóvenes desde la 6 hasta la 16.
+2. Boxer Roy Franco (Niños): Tallas 6-8-10-12-14-16.
    - Foto del catálogo: https://xhkpmtakvojdigxbunrx.supabase.co/storage/v1/object/public/imagenes-productos/roy_franco.jpeg
-3. Boxer Perlita Mia: Tallas para niñas/jóvenes desde la 6 hasta la 16.
+3. Boxer Perlita Mia (Niñas): Tallas 6-8-10-12-14-16.
    - Foto del catálogo: https://xhkpmtakvojdigxbunrx.supabase.co/storage/v1/object/public/imagenes-productos/perlita_mia.jpeg
-- Material: Todas las prendas están confeccionadas con Tela Algodón Licrado de composición 96/4 (96% algodón, 4% licra).
+- Material: Todas las prendas están confeccionadas con algodon peinado con 96% de algodon y 4% licra.
 - Calidad: No enviamos productos dañados. Contamos con procesos de control de calidad estrictos.
 
 CONDICIONES DE VENTA Y PRECIOS (MAYORISTAS):
 - Pedido mínimo: 20 docenas por cada talla.
-- Precio Boxer Semental: Tallas S a la L a S/ 54.00 la docena. Talla XL a S/ 55.00 la docena.
-- Precio Boxer Roy Franco y Perlita Mia: S/ 38.00 la docena (tallas 6 a la 16).
+- Precio Boxer Semental: Tallas S-M-L a S/ 54.00 la docena. Talla XL a S/ 56.00 la docena.
+- Precio Boxer Roy Franco (Niños): S/ 39.00 la docena (tallas 6-8-10-12-14-16).
+- Precio Boxer Perlita Mia (Niñas): S/ 38.00 la docena (tallas 6-8-10-12-14-16).
 - Métodos de pago: Transferencia bancaria en los bancos (BCP o Caja Arequipa) o Yape.
 - Comprobantes: Emitimos boleta y factura.
 - No realizamos diseños patentados de otras marcas.
