@@ -119,7 +119,8 @@ def enviar_a_evolution(para, texto):
     payload = {
         "number": para, 
         "text": texto,
-        "delay": 1000 
+        "delay": 1000,
+        "linkPreview": False
     }
     
     try:
