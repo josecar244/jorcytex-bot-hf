@@ -54,14 +54,26 @@ PROMPT_INJECTION_PATTERNS: List[str] = [
     # ROLE PLAY
     r"(?i)act\s+as\s+(if\s+you\s+were|a|an)\s+",
     r"(?i)act[uú]a\s+como\s+(si\s+fueras?\s+)?(un|una)?",
+    r"(?i)asume\s+el\s+rol\s+de\s+",
+    r"(?i)toma\s+el\s+papel\s+de\s+",
+    r"(?i)convi[eé]rtete\s+en\s+",
+    r"(?i)ahora\s+eres?\s+",
+    r"(?i)finge\s+(que\s+)?(eres?|ser)\s+",
     # JAILBREAK
     r"(?i)\bDAN\b\s*(mode)?", r"(?i)Developer\s+Mode", r"(?i)\bjailbreak\b",
     r"(?i)modo\s+(desarrollador|dev|programador|sin\s+restricciones|sin\s+filtros)",
-    # EXTRACTION
+    # EXTRACTION / REVERSE ENGINEERING
     r"(?i)revel[ae]\s+(tu\s+)?prompt", r"(?i)reveal\s+(your\s+)?(system\s+)?prompt",
     r"(?i)muestr[ae]\s+(tu\s+|tus?\s+)?(prompt|instrucciones?)",
+    r"(?i)(dame|escribe|genera)\s+.*(c[oó]digo|python|script).*(conectarme|arquitectura|estructura)",
+    r"(?i)conectarme\s+(a\s+)?tu\s+api",
+    r"(?i)tu\s+api\s+key",
+    # OFF-TOPIC / GENERAL KNOWLEDGE (Evita que hable de caricaturas, política, etc.)
+    r"(?i)(conoces\s+a|sabes\s+(quien|que)\s+es|cu[eé]ntame\s+de|hablame\s+de|dime\s+sobre)\s+(la\s+)?(caricatura|serie|pel[ií]cula|pol[ií]tica|religi[oó]n|f[uú]tbol|deporte|historia)",
+    r"(?i)^(conoces\s+a|sabes\s+(quien|que)\s+es)\s+[\w\s]{2,}\?$",
+    r"(?i)(pinky\s+y\s+cerebro|caricatura|dibujos\s+animados|anime|manga)",
     # RECONOCIMIENTO DE INFRAESTRUCTURA
-    r"(?i)(base\s+de\s+datos|bd|servidor|api|modelo|tecnolog[ií]a|framework|arquitectura|stack|infrastructure)\s+(usa[sn]?|utili[sz]a[sn]?|tienes?|tiene)",
+    r"(?i)(base\s+de\s+datos|bd|servidor|api|modelo|tecnolog[ií]a|framework|arquitectura|stack|infrastructure)\s+",
     r"(?i)(usas?|utili[sz]as?|corres?|funciona[sn]?\s+con)\s+(pinecone|postgres|postgresql|redis|mongodb|openai|azure|aws|gcp|langchain|groq)",
     r"(?i)(de\s+qu[eé]|de\s+que|con\s+qu[eé]|con\s+que)\s+(est[aá][sn]?\s+hecho|fue\s+construido|fue\s+creado|fue\s+programado)",
 ]
@@ -180,10 +192,10 @@ def respuesta_bloqueada(motivo: str = "") -> str:
     """Mensajes amigables para el usuario."""
     mensajes = {
         "clave_secreta": "Por seguridad, no compartas claves de API o tokens secretos en el chat.",
-        "prompt_injection": "Lo siento, no puedo procesar ese mensaje. Por favor, reformula tu consulta de manera apropiada.",
-        "contenido_toxico": "Por favor, mantén un trato respetuoso. No puedo responder a mensajes ofensivos o inapropiados.",
-        "pii_detectado": "He detectado datos personales sensibles (DNI, RUC, etc.). Por tu privacidad, no compartas esta información.",
-        "url_detectada": "Por seguridad, no tengo permitido procesar o abrir enlaces externos.",
+        "prompt_injection": "Soy el asistente virtual de Inversiones JORCYTEX EIRL. Mi función es exclusivamente asesorarte sobre nuestros productos textiles y pedidos. No puedo responder a preguntas fuera de este tema.",
+        "contenido_toxico": "Por favor, mantén un trato respetuoso. No puedo responder a mensajes ofensivos.",
+        "pii_detectado": "He detectado datos personales (DNI, RUC, etc.). Por privacidad, no compartas información sensible.",
+        "url_detectada": "Por seguridad, no tengo permitido procesar enlaces externos.",
         "patron_personalizado": "Tu mensaje contiene contenido no permitido por nuestras políticas internas."
     }
-    return mensajes.get(motivo, "Lo siento, no puedo procesar ese mensaje por motivos de seguridad.")
+    return mensajes.get(motivo, "Lo siento, tu mensaje ha sido filtrado por nuestras políticas de seguridad.")
