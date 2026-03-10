@@ -9,17 +9,14 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-from supabase.client import create_client
+from services.database_service import DatabaseService
 from guardrails import InputGuardrail, respuesta_bloqueada
 
 load_dotenv()
 
 class AgenteJorcytex:
     def __init__(self):
-        self.url = os.getenv("SUPABASE_URL")
-        self.key = os.getenv("SUPABASE_SERVICE_KEY")
-        self.supabase = create_client(self.url, self.key)
-        
+        self.db = DatabaseService()
         self.embeddings_model = GoogleGenerativeAIEmbeddings(
             model="models/gemini-embedding-001",
             output_dimensionality=768,
@@ -36,20 +33,9 @@ class AgenteJorcytex:
         self.guardrails = InputGuardrail()
 
     def obtener_contexto(self, pregunta: str):
-        """
-        Búsqueda nativa en Supabase para evitar el error de 'SyncRPCFilterRequestBuilder'
-        """
+        """Búsqueda semántica usando el servicio de base de datos."""
         query_embedding = self.embeddings_model.embed_query(pregunta)
-        
-        # Al no especificar .schema(), usa 'public' por defecto
-        rpc_res = self.supabase.rpc("match_documents", {
-            "query_embedding": query_embedding,
-            "match_threshold": 0.5,
-            "match_count": 3
-        }).execute()
-        
-        contexto = "\n".join([item['content'] for item in rpc_res.data])
-        return contexto if contexto else "No hay información específica disponible."
+        return self.db.search_similar_documents(query_embedding)
 
 
     def _crear_cadena_lcel(self):
@@ -94,44 +80,34 @@ class AgenteJorcytex:
         return prompt | self.llm | StrOutputParser()
 
     def responder(self, wa_id: str, pregunta_usuario: str):
-        # 🛡️ Capa de Seguridad (Guardrails Modular Capas 1-6)
+        # 🛡️ Capa de Seguridad
         is_safe, reason = self.guardrails.verificar(pregunta_usuario)
         if not is_safe:
             return respuesta_bloqueada(reason)
 
         try:
-            # UTC Sync: Filtro para olvidar memoria de días anteriores (Reseteo a las 00:00)
-            hoy = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-            
-            historial_db = self.supabase.table("chat_history")\
-                .select("role", "message")\
-                .eq("wa_id", wa_id)\
-                .gte("created_at", hoy)\
-                .order("created_at", desc=True)\
-                .limit(5)\
-                .execute()
-            
-            formato_historial = ""
-            for msg in reversed(historial_db.data):
-                role = "Cliente" if msg['role'] == 'human' else "Asistente"
-                formato_historial += f"{role}: {msg['message']}\n"
-
+            # 📚 Preparación de datos (Historial y Contexto)
+            formato_historial = self.db.get_chat_history(wa_id)
             contexto = self.obtener_contexto(pregunta_usuario)
 
+            # 🧠 Generación de respuesta
             respuesta = self.chain.invoke({
                 "context": contexto,
                 "history": formato_historial,
                 "question": pregunta_usuario
             })
 
-            self.supabase.table("chat_history").insert([
-                {"wa_id": wa_id, "role": "human", "message": pregunta_usuario},
-                {"wa_id": wa_id, "role": "ai", "message": respuesta}
-            ]).execute()
-
+            # 💾 Persistencia
+            self.db.save_chat_interaction(wa_id, pregunta_usuario, respuesta)
             return respuesta
         except Exception as e:
             return f"Error: {str(e)}"
+
+    def set_ai_status(self, wa_id: str, active: bool):
+        self.db.set_ai_status(wa_id, active)
+
+    def is_ai_enabled(self, wa_id: str) -> bool:
+        return self.db.is_ai_enabled(wa_id)
 
 if __name__ == "__main__":
     agente = AgenteJorcytex()

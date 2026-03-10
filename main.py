@@ -1,22 +1,17 @@
 import os
-import requests
-import re
 from fastapi import FastAPI, Request
 from agente import AgenteJorcytex 
+from services.message_service import MessageService
 from dotenv import load_dotenv
 
 load_dotenv()
 app = FastAPI()
 agente = AgenteJorcytex()
-
-# Configuración de Evolution API
-EVOLUTION_URL = (os.getenv("EVOLUTION_URL") or "").rstrip("/") 
-EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY") 
-EVOLUTION_INSTANCE = os.getenv("EVOLUTION_INSTANCE") 
+messenger = MessageService()
 
 @app.api_route("/", methods=["GET", "HEAD"])
 async def root():
-    return {"status": "online", "message": "Servidor JORCYTEX (Evolution v2) operando"}
+    return {"status": "online", "message": "Servidor JORCYTEX (Evolution v2) operando con MessageService"}
 
 # Cache temporal para evitar duplicados
 PROCESED_IDS = set()
@@ -36,10 +31,8 @@ async def handle_message(request: Request):
             print(f"ℹ️ Evento desconocido: {evento}")
             return {"status": "event_ignored"}
 
-        # 2. Extracción segura de la data (Evolution v2 puede mandar objeto o lista)
+        # 2. Extracción de data
         data_field = payload.get("data", {})
-        
-        # Si la data es una lista, tomamos el primer elemento (típico de Baileys/Evolution)
         if isinstance(data_field, list):
             if not data_field: return {"status": "empty_list"}
             mensaje_obj = data_field[0]
@@ -59,97 +52,40 @@ async def handle_message(request: Request):
         wa_id = mensaje_obj.get("key", {}).get("remoteJid", "SIN-ID")
         from_me = mensaje_obj.get("key", {}).get("fromMe", False)
         
-        if from_me: return {"status": "ignored_self"}
-        
-        # Extraer texto (soporte extendido)
+        # Extraer texto
         texto_usuario = ""
         msg_content = mensaje_obj.get("message", {})
         if "conversation" in msg_content:
             texto_usuario = msg_content["conversation"]
         elif "extendedTextMessage" in msg_content:
             texto_usuario = msg_content["extendedTextMessage"].get("text", "")
+
+        # 🤖 CONTROL DE INTERVENCIÓN HUMANA
+        if from_me:
+            if texto_usuario.strip().lower() == "!ia on":
+                agente.set_ai_status(wa_id, True)
+                messenger.send_text(wa_id, "🤖 IA Reactivada para este chat.")
+            else:
+                if texto_usuario and not texto_usuario.startswith("!"):
+                    agente.set_ai_status(wa_id, False)
+            return {"status": "human_intervention_handled"}
+
+        # 🛑 VERIFICAR SI LA IA ESTÁ ACTIVA
+        if not agente.is_ai_enabled(wa_id):
+            return {"status": "ai_muted"}
         
         if not texto_usuario:
             return {"status": "no_text_content"}
 
         print(f"🔍 [WEBHOOK] Mensaje de {wa_id}: '{texto_usuario[:30]}...'")
 
-        # 4. Generar respuesta RAG
+        # 4. Generar y Enviar respuesta
+        # El Agente se encarga de la lógica RAG y Seguridad
+        # El Messenger se encarga de procesar el texto/imágenes y el envío
         respuesta_ai = agente.responder(wa_id, texto_usuario)
-        
-        # 📸 PROCESAR IMÁGENES
-        # Buscamos cualquier link que termine en imagen
-        image_links = re.findall(r'(https?://\S+\.(?:jpg|jpeg|png))', respuesta_ai)
-        
-        # Limpiar el texto: quitamos las URLs y líneas que queden vacías o solo con nombres de fotos
-        texto_limpio = respuesta_ai
-        for link in image_links:
-            texto_limpio = texto_limpio.replace(link, "")
-        
-        # 🧹 LIMPIEZA AGRESIVA: Quitar líneas que terminan en ":" y nada más (sobras de etiquetas de fotos)
-        lineas = texto_limpio.split("\n")
-        lineas_finales = []
-        for l in lineas:
-            # Si la línea termina en : o *:* y está casi vacía, la quitamos
-            l_strip = l.strip()
-            if l_strip.endswith(":") or l_strip.endswith(":*"):
-                if len(l_strip) < 30: continue 
-            if l_strip:
-                lineas_finales.append(l)
-        
-        texto_final = "\n".join(lineas_finales).strip()
-        
-        if texto_final:
-            enviar_a_evolution(wa_id, texto_final)
-        
-        # Enviamos las fotos por separado
-        for link in image_links:
-            enviar_imagen_a_evolution(wa_id, link)
+        messenger.process_and_send(wa_id, respuesta_ai)
             
     except Exception as e:
         print(f"❌ Error en webhook: {e}")
         
     return {"status": "ok"}
-
-
-def enviar_a_evolution(para, texto):
-    url = f"{EVOLUTION_URL}/message/sendText/{EVOLUTION_INSTANCE}"
-    headers = {"apikey": EVOLUTION_API_KEY, "Content-Type": "application/json"}
-    
-    payload = {
-        "number": para, 
-        "text": texto,
-        "delay": 1000,
-        "linkPreview": False
-    }
-    
-    try:
-        response = requests.post(url, json=payload, headers=headers)
-        print(f"📤 Texto enviado a {para}: {response.status_code}")
-        return response.json()
-    except Exception as e:
-        print(f"❌ Error enviando texto: {e}")
-        return None
-
-def enviar_imagen_a_evolution(para, url_imagen, pie_de_foto=""):
-    url = f"{EVOLUTION_URL}/message/sendMedia/{EVOLUTION_INSTANCE}"
-    headers = {"apikey": EVOLUTION_API_KEY, "Content-Type": "application/json"}
-    
-    # 🕵️ ESTRATEGIA v2.3.6: Payload plano sin wrappers anidados
-    payload = {
-        "number": para,
-        "media": url_imagen,
-        "mediatype": "image",
-        "caption": pie_de_foto
-    }
-    
-    try:
-        response = requests.post(url, json=payload, headers=headers)
-        print(f"🖼️ Imagen enviada a {para}: {response.status_code}")
-        return response.json()
-    except Exception as e:
-        print(f"❌ Error enviando imagen: {e}")
-        return None
-
-
-
