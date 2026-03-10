@@ -10,6 +10,7 @@ from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTempla
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from supabase.client import create_client
+from guardrails import InputGuardrail, respuesta_bloqueada
 
 load_dotenv()
 
@@ -32,6 +33,7 @@ class AgenteJorcytex:
         )
 
         self.chain = self._crear_cadena_lcel()
+        self.guardrails = InputGuardrail()
 
     def obtener_contexto(self, pregunta: str):
         """
@@ -99,6 +101,11 @@ class AgenteJorcytex:
         return prompt | self.llm | StrOutputParser()
 
     def responder(self, wa_id: str, pregunta_usuario: str):
+        # 🛡️ Capa de Seguridad (Guardrails Modular Capas 1-6)
+        is_safe, reason = self.guardrails.verificar(pregunta_usuario)
+        if not is_safe:
+            return respuesta_bloqueada(reason)
+
         try:
             # UTC Sync: Filtro para olvidar memoria de días anteriores (Reseteo a las 00:00)
             hoy = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
