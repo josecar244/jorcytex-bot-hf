@@ -20,9 +20,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiar el resto del código del proyecto
 COPY . .
 
-# Exponer el puerto que usará Cloud Run (por defecto 8080)
-EXPOSE 8080
+# Exponer el puerto que usa Hugging Face Spaces (7860)
+EXPOSE 7860
 
 # Comando para iniciar la aplicación usando uvicorn
-# Cloud Run inyecta la variable de entorno $PORT
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+# HF Spaces inyecta el puerto 7860
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port 7860"]
