@@ -21,6 +21,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Exponer el puerto que usa Hugging Face Spaces (7860)
+# Compatible con despliegue automático vía GitHub Actions
 EXPOSE 7860
 
 # Comando para iniciar la aplicación usando uvicorn
