@@ -11,6 +11,8 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from services.database_service import DatabaseService
 from guardrails import InputGuardrail, respuesta_bloqueada
+from langfuse import Langfuse, observe, propagate_attributes
+from langfuse.langchain import CallbackHandler
 
 load_dotenv()
 
@@ -29,8 +31,21 @@ class AgenteJorcytex:
             groq_api_key=os.getenv("GROQ_API_KEY")
         )
 
+        # 🪢 Langfuse Integration
+        self.langfuse_client = Langfuse(
+            public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
+            secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
+            host=os.getenv("LANGFUSE_BASE_URL")
+        )
+
+        # Handler for automatic LangChain tracing
+        self.langfuse_handler = CallbackHandler()
+
+        # 📝 Configuración del Agente
+        self.system_prompt = self._cargar_prompt_langfuse()
         self.chain = self._crear_cadena_lcel()
         self.guardrails = InputGuardrail()
+        
 
     def obtener_contexto(self, pregunta: str):
         """Búsqueda semántica usando el servicio de base de datos."""
@@ -39,7 +54,27 @@ class AgenteJorcytex:
 
 
     def _crear_cadena_lcel(self):
-        system_template = """
+        # El system_prompt ahora se carga dinámicamente o usa el fallback
+
+        prompt = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template(self.system_prompt),
+            HumanMessagePromptTemplate.from_template("{question}")
+        ])
+        
+        return prompt | self.llm | StrOutputParser()
+
+    def _cargar_prompt_langfuse(self):
+        """Intenta cargar el prompt desde Langfuse, con fallback al local."""
+        try:
+            lf_prompt = self.langfuse_client.get_prompt("jorcytex-system-prompt", label="production")
+            print(f"📝 Prompt cargado desde Langfuse: v{lf_prompt.version}")
+            return lf_prompt.compile()
+        except Exception:
+            print("⚠️ Usando prompt local (no se encontró en Langfuse o error de conexión).")
+            return self._obtener_bot_system_prompt()
+
+    def _obtener_bot_system_prompt(self):
+        return """
             IDENTIDAD Y MISIÓN:
             Eres el asistente virtual exclusivo de Inversiones JORCYTEX EIRL. Tu única función es asesorar a clientes mayoristas sobre productos textiles de ropa interior (boxers para hombres, niñas y niños).
 
@@ -72,13 +107,7 @@ class AgenteJorcytex:
             {context}
             """
 
-        prompt = ChatPromptTemplate.from_messages([
-            SystemMessagePromptTemplate.from_template(system_template),
-            HumanMessagePromptTemplate.from_template("{question}")
-        ])
-        
-        return prompt | self.llm | StrOutputParser()
-
+    @observe()
     def responder(self, wa_id: str, pregunta_usuario: str):
         # 🛡️ Capa de Seguridad
         is_safe, reason = self.guardrails.verificar(pregunta_usuario)
@@ -90,12 +119,28 @@ class AgenteJorcytex:
             formato_historial = self.db.get_chat_history(wa_id)
             contexto = self.obtener_contexto(pregunta_usuario)
 
-            # 🧠 Generación de respuesta
-            respuesta = self.chain.invoke({
-                "context": contexto,
-                "history": formato_historial,
-                "question": pregunta_usuario
-            })
+            # 🏷️ Langfuse v4: Propagación de atributos de sesión y usuario
+            with propagate_attributes(
+                trace_name="jorcytex-rag-response",
+                session_id=wa_id,
+                user_id=wa_id,
+                tags=["production", "whatsapp"]
+            ):
+                # 🧠 Generación de respuesta con tracking de Langfuse
+                respuesta = self.chain.invoke(
+                    {
+                        "context": contexto,
+                        "history": formato_historial,
+                        "question": pregunta_usuario
+                    },
+                    config={"callbacks": [self.langfuse_handler]}
+                )
+
+                # 📊 Registro de I/O a nivel de trace principal
+                self.langfuse_client.set_current_trace_io(
+                    input={"pregunta": pregunta_usuario},
+                    output={"respuesta": respuesta}
+                )
 
             # 💾 Persistencia
             self.db.save_chat_interaction(wa_id, pregunta_usuario, respuesta)
